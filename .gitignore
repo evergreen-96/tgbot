@@ -1,0 +1,5 @@
+venv/
+.venv/
+database
+secret_santa.db
+.idea
