@@ -79,13 +79,28 @@ class SetNameState(StatesGroup):
 
 @dp.message(Command("start"))
 async def start_command(message: Message):
+    # Создаем клавиатуру
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Мои комнаты", callback_data="my_rooms")
-    keyboard.button(text="Создать комнату", callback_data="create_room")
-    keyboard.button(text="Присоединиться к комнате", callback_data="join_room")
-    keyboard.button(text="Установить имя", callback_data="set_display_name")
+    keyboard.button(text="🏠 Мои комнаты", callback_data="my_rooms")
+    keyboard.button(text="➕ Создать комнату", callback_data="create_room")
+    keyboard.button(text="🔗 Присоединиться к комнате", callback_data="join_room")
+    keyboard.button(text="📝 Установить имя", callback_data="set_display_name")
     keyboard.adjust(1)
-    await message.answer("Добро пожаловать в игру 'Секретный Санта'! Выберите действие:", reply_markup=keyboard.as_markup())
+
+    # Текст приветствия
+    welcome_text = (
+        "🎉 Добро пожаловать в игру *'Секретный Санта'*! 🎅\n\n"
+        "Здесь вы можете организовать увлекательный обмен подарками 🎁 с друзьями, коллегами или семьей.\n\n"
+        "Пожалуйста, выберите действие из меню ниже:"
+    )
+
+    # Отправляем сообщение с клавиатурой
+    await message.answer(
+        welcome_text,
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
+
 
 @dp.callback_query(lambda c: c.data == "set_display_name")
 async def set_display_name(callback: CallbackQuery, state: FSMContext):
@@ -107,7 +122,7 @@ async def handle_new_display_name(message: Message, state: FSMContext):
     conn.commit()
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
 
     await message.answer(f"Ваше отображаемое имя обновлено на: {new_name}.", reply_markup=keyboard.as_markup())
@@ -131,11 +146,11 @@ async def my_rooms(callback: CallbackQuery):
         for room_id, admin_id in rooms:
             admin_label = " (Админ)" if admin_id == callback.from_user.id else ""
             keyboard.button(text=f"Комната {room_id}{admin_label}", callback_data=f"room_menu:{room_id}")
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
 
     if rooms:
-        await callback.message.edit_text("Ваши комнаты:", reply_markup=keyboard.as_markup())
+        await callback.message.edit_text("🏠 Ваши комнаты:", reply_markup=keyboard.as_markup())
     else:
         await callback.message.edit_text("У вас нет комнат.", reply_markup=keyboard.as_markup())
 @dp.callback_query(lambda c: c.data.startswith("room_menu"))
@@ -162,7 +177,7 @@ async def create_room(callback: CallbackQuery):
 async def process_join(callback: CallbackQuery):
     room_id = callback.data.split(":")[1]
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="my_rooms")
+    keyboard.button(text="🔙 Назад", callback_data="my_rooms")
     keyboard.adjust(1)
     cursor.execute("SELECT * FROM rooms WHERE room_id = ?", (room_id,))
     if not cursor.fetchone():
@@ -178,7 +193,7 @@ async def process_join(callback: CallbackQuery):
                    (room_id, callback.from_user.id, callback.from_user.full_name))
     conn.commit()
 
-    await callback.message.edit_text(f"Вы присоединились к комнате {room_id} как {callback.from_user.full_name}!", reply_markup=keyboard.as_markup())
+    await room_menu(callback)
 
 @dp.callback_query(lambda c: c.data == "join_room")
 async def join_room(callback: CallbackQuery):
@@ -190,7 +205,7 @@ async def join_room(callback: CallbackQuery):
             keyboard.button(text=f"Присоединиться к комнате {room_id}", callback_data=f"join:{room_id}")
     else:
         keyboard.button(text="Нет доступных комнат", callback_data="back_to_main")
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
     await callback.message.edit_text("Выберите комнату для присоединения:", reply_markup=keyboard.as_markup())
 
@@ -198,7 +213,7 @@ async def join_room(callback: CallbackQuery):
 async def handle_join_room_id(message: Message):
     room_id = message.text.strip()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
     if not room_id.isdigit():
         await message.answer("ID комнаты должен быть числом.", reply_markup=keyboard.as_markup())
@@ -221,32 +236,48 @@ async def handle_join_room_id(message: Message):
     conn.commit()
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
-    await message.answer(f"Вы присоединились к комнате {room_id} как {message.from_user.full_name}!",
-                         reply_markup=keyboard.as_markup())
-
+    await message.answer(
+        f"🎉 *Вы успешно присоединились к комнате:* `{room_id}`!\n\n"
+        f"👤 Вы вошли как: *{message.from_user.full_name}*.\n\n"
+        f"Теперь вы можете участвовать в игре 'Секретный Санта'! 🎁\n"
+        f"Добавьте одно или несколько желаний с помощью кнопок ниже'! 🎁\n"
+        f"P.S. После проведения розыгрыша вы получите имя человека, которому будете дарить подарок. Также сможете посмотреть его желания'! 🎁\n"
+        f"Выберите дальнейшее действие из меню ниже:",
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
 async def show_admin_menu(message: Message, room_id: str):
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Запустить игру", callback_data=f"start_game:{room_id}")
-    keyboard.button(text="Посмотреть участников", callback_data=f"list_participants:{room_id}")
-    keyboard.button(text="Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
-    keyboard.button(text="Управление своими желаниями", callback_data="manage_wishes")
-    keyboard.button(text="Удалить участника", callback_data=f"remove_participant:{room_id}")
-    keyboard.button(text="Удалить комнату", callback_data=f"delete_room:{room_id}")
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🚀 Запустить игру", callback_data=f"start_game:{room_id}")
+    keyboard.button(text="👥 Посмотреть участников", callback_data=f"list_participants:{room_id}")
+    keyboard.button(text="📩 Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
+    keyboard.button(text="🎁 Управление своими желаниями", callback_data="manage_wishes")
+    keyboard.button(text="❌ Удалить участника", callback_data=f"remove_participant:{room_id}")
+    keyboard.button(text="🗑️ Удалить комнату", callback_data=f"delete_room:{room_id}")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
-    await message.edit_text(f"Админское меню для комнаты {room_id}", reply_markup=keyboard.as_markup())
+    await message.edit_text(
+        f"📋 *Админское меню для комнаты:* `{room_id}`\n\nВыберите действие:",
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
 
 async def show_user_menu(message: Message, room_id: str):
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Выйти из комнаты", callback_data=f"leave_room:{room_id}")
-    keyboard.button(text="Посмотреть участников", callback_data=f"list_participants:{room_id}")
-    keyboard.button(text="Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
-    keyboard.button(text="Управление своими желаниями", callback_data="manage_wishes")
-    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.button(text="🚪 Выйти из комнаты", callback_data=f"leave_room:{room_id}")
+    keyboard.button(text="👥 Посмотреть участников", callback_data=f"list_participants:{room_id}")
+    keyboard.button(text="📩 Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
+    keyboard.button(text="🎁 Управление своими желаниями", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="back_to_main")
     keyboard.adjust(1)
-    await message.edit_text(f"Меню участника для комнаты {room_id}", reply_markup=keyboard.as_markup())
+    await message.edit_text(
+        f"📋 *Меню участника для комнаты:* `{room_id}`\n\nВыберите действие:",
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
+
 
 @dp.callback_query(lambda c: c.data.startswith("manage_wishes"))
 async def manage_wishes(callback: CallbackQuery):
@@ -256,14 +287,18 @@ async def manage_wishes(callback: CallbackQuery):
     room_id = user_rooms[0] if user_rooms else '0'  # Задаём 0 или другое значение по умолчанию, если комната не найдена
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Отобразить", callback_data="show_wishes")
-    keyboard.button(text="Добавить", callback_data="add_wish")
-    keyboard.button(text="Изменить", callback_data="edit_wish")
-    keyboard.button(text="Удалить", callback_data="delete_wish")
-    keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")  # Исправленное значение callback
+    keyboard.button(text="👀 Отобразить желания", callback_data="show_wishes")
+    keyboard.button(text="➕ Добавить желание", callback_data="add_wish")
+    keyboard.button(text="✏️ Изменить желание", callback_data="edit_wish")
+    keyboard.button(text="❌ Удалить желание", callback_data="delete_wish")
+    keyboard.button(text="🔙 Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
-    await callback.message.edit_text("Управление своими желаниями", reply_markup=keyboard.as_markup())
 
+    await callback.message.edit_text(
+        "🎁 *Управление своими желаниями:*\n\nВыберите действие:",
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
 
 @dp.callback_query(lambda c: c.data == "edit_wish")
 async def choose_wish_to_edit(callback: CallbackQuery):
@@ -272,7 +307,7 @@ async def choose_wish_to_edit(callback: CallbackQuery):
     keyboard = InlineKeyboardBuilder()
     for wish, rowid in wishes:
         keyboard.button(text=wish, callback_data=f"edit_wish:{rowid}")
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     await callback.message.edit_text("Выберите желание для редактирования:", reply_markup=keyboard.as_markup())
 
@@ -283,7 +318,7 @@ async def choose_wish_to_delete(callback: CallbackQuery):
     keyboard = InlineKeyboardBuilder()
     for wish, rowid in wishes:
         keyboard.button(text=wish, callback_data=f"delete_wish:{rowid}")
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     await callback.message.edit_text("Выберите желание для удаления:", reply_markup=keyboard.as_markup())
 
@@ -294,7 +329,7 @@ async def handle_add_wish(message: Message, state: FSMContext):
     conn.commit()
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     await message.answer("Желание добавлено!", reply_markup=keyboard.as_markup())
 
@@ -321,7 +356,7 @@ async def handle_edit_wish(message: Message, state: FSMContext):
     cursor.execute("UPDATE wishes SET wish = ? WHERE rowid = ?", (new_wish, wish_id))
     conn.commit()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     await state.clear()
     await message.answer("Желание обновлено!", reply_markup=keyboard.as_markup())
@@ -332,7 +367,7 @@ async def delete_wish(callback: CallbackQuery):
     cursor.execute("DELETE FROM wishes WHERE rowid = ?", (rowid,))
     conn.commit()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     await callback.message.edit_text("Желание удалено.", reply_markup=keyboard.as_markup())
 
@@ -340,12 +375,25 @@ async def delete_wish(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "back_to_main")
 async def back_to_main(callback: CallbackQuery):
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Мои комнаты", callback_data="my_rooms")
-    keyboard.button(text="Создать комнату", callback_data="create_room")
-    keyboard.button(text="Присоединиться к комнате", callback_data="join_room")
-    keyboard.button(text="Установить имя", callback_data="set_display_name")
-    keyboard.adjust(1)
-    await callback.message.edit_text("Добро пожаловать в игру 'Секретный Санта'!  Выберите действие:", reply_markup=keyboard.as_markup())
+    keyboard.button(text="🏠 Мои комнаты", callback_data="my_rooms")
+    keyboard.button(text="➕ Создать комнату", callback_data="create_room")
+    keyboard.button(text="🔗 Присоединиться к комнате", callback_data="join_room")
+    keyboard.button(text="📝 Установить имя", callback_data="set_display_name")
+    keyboard.adjust(1)  # Устанавливаем, что кнопки будут в один столбец
+
+    # Текст приветствия
+    welcome_text = (
+        "🎉 Добро пожаловать в игру *'Секретный Санта'*! 🎅\n\n"
+        "Здесь вы можете организовать увлекательный обмен подарками 🎁 с друзьями, коллегами или семьей.\n\n"
+        "Пожалуйста, выберите действие из меню ниже:"
+    )
+
+    # Отправляем сообщение с клавиатурой
+    await callback.message.edit_text(
+        welcome_text,
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
+    )
 
 @dp.callback_query(lambda c: c.data.startswith("leave_room"))
 async def leave_room(callback: CallbackQuery):
@@ -355,7 +403,7 @@ async def leave_room(callback: CallbackQuery):
 
     if admin_id and admin_id[0] == callback.from_user.id:
         keyboard = InlineKeyboardBuilder()
-        keyboard.button(text="Назад", callback_data="room_menu:" + room_id)
+        keyboard.button(text="🔙 Назад", callback_data="room_menu:" + room_id)
         keyboard.adjust(1)
         await callback.message.edit_text(
             "Вы администратор комнаты и не можете выйти из нее. Удалите комнату, если хотите выйти.",
@@ -384,7 +432,7 @@ async def show_wishes(callback: CallbackQuery):
     cursor.execute("SELECT wish FROM wishes WHERE user_id = ?", (callback.from_user.id,))
     wishes = cursor.fetchall()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="manage_wishes")
+    keyboard.button(text="🔙 Назад", callback_data="manage_wishes")
     keyboard.adjust(1)
     if wishes:
         wish_list = "\n".join([w[0] for w in wishes])
@@ -401,7 +449,7 @@ async def delete_wish(callback: CallbackQuery):
     cursor.execute("DELETE FROM wishes WHERE user_id = ?", (callback.from_user.id,))
     conn.commit()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="my_rooms")
+    keyboard.button(text="🔙 Назад", callback_data="my_rooms")
     keyboard.adjust(1)
     await callback.message.edit_text("Все ваши желания удалены.", reply_markup=keyboard.as_markup())
 
@@ -411,7 +459,7 @@ async def list_participants(callback: CallbackQuery):
     cursor.execute("SELECT user_name FROM participants WHERE room_id = ?", (room_id,))
     rows = cursor.fetchall()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")
+    keyboard.button(text="🔙 Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
     if not rows:
         await callback.message.edit_text("Список участников пуст или комнаты не существует.", reply_markup=keyboard.as_markup())
@@ -440,11 +488,11 @@ async def start_game(callback: CallbackQuery):
         return
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Да", callback_data=f"confirm_start:{room_id}")
-    keyboard.button(text="Нет", callback_data=f"room_menu:{room_id}")
+    keyboard.button(text="✅", callback_data=f"confirm_start:{room_id}")
+    keyboard.button(text="❌", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
 
-    await callback.message.edit_text("Вы уверены, что хотите начать новую игру? Это перезапишет предыдущие результаты.", reply_markup=keyboard.as_markup())
+    await callback.message.edit_text("В случае, если розыгрыш уже был проведен, данное действие перезапишет предыдущий результат. Продолжить?", reply_markup=keyboard.as_markup())
 
 @dp.callback_query(lambda c: c.data.startswith("confirm_start"))
 async def confirm_start_game(callback: CallbackQuery):
@@ -474,14 +522,17 @@ async def confirm_start_game(callback: CallbackQuery):
             print(f"Не удалось отправить сообщение {giver_id}: {e}")
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Посмотреть желания подопечного", callback_data=f"view_wishlist:{room_id}")
-    keyboard.button(text="Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
-    keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")
+    keyboard.button(text="🎁 Посмотреть желания подопечного", callback_data=f"view_wishlist:{room_id}")
+    keyboard.button(text="📩 Напомнить подопечного", callback_data=f"view_assignment:{room_id}")
+    keyboard.button(text="🔙 Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
 
     await callback.message.edit_text(
-        f"Игра началась в комнате {room_id}! Каждому участнику отправлено имя того, кому он дарит подарок.",
-        reply_markup=keyboard.as_markup()
+        f"🎉 *Игра началась в комнате:* `{room_id}`!\n\n"
+        f"Каждому участнику отправлено имя того, кому он дарит подарок 🎁.\n\n"
+        f"Выберите действие из меню ниже:",
+        reply_markup=keyboard.as_markup(),
+        parse_mode="Markdown"
     )
 
 @dp.callback_query(lambda c: c.data.startswith("view_assignment"))
@@ -493,8 +544,8 @@ async def view_assignment(callback: CallbackQuery):
     )
     assignment = cursor.fetchone()
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Посмотреть желания подопечного", callback_data=f"view_wishlist:{room_id}")
-    keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")
+    keyboard.button(text="🎁 Посмотреть желания подопечного", callback_data=f"view_wishlist:{room_id}")
+    keyboard.button(text="🔙 Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
     if assignment:
         cursor.execute(
@@ -546,7 +597,7 @@ async def view_wishlist(callback: CallbackQuery):
 
         if receiver_name:
             await callback.message.edit_text(
-                f"Список желаний вашего подопечного ({receiver_name[0]}):\n{wishlist_text}",
+                f"🎁 Список желаний вашего подопечного ({receiver_name[0]}):\n{wishlist_text}",
                 reply_markup=keyboard.as_markup()
             )
         else:
@@ -569,7 +620,7 @@ async def delete_room(callback: CallbackQuery):
     conn.commit()
 
     keyboard = InlineKeyboardBuilder()
-    keyboard.button(text="Назад", callback_data="my_rooms")
+    keyboard.button(text="🔙 Назад", callback_data="my_rooms")
     keyboard.adjust(1)
 
     await callback.message.edit_text(f"Комната {room_id} удалена.", reply_markup=keyboard.as_markup())
