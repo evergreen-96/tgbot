@@ -74,14 +74,44 @@ class WishStates(StatesGroup):
     adding = State()
     editing = State()
 
+class SetNameState(StatesGroup):
+    entering_name = State()
+
 @dp.message(Command("start"))
 async def start_command(message: Message):
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text="Мои комнаты", callback_data="my_rooms")
     keyboard.button(text="Создать комнату", callback_data="create_room")
     keyboard.button(text="Присоединиться к комнате", callback_data="join_room")
+    keyboard.button(text="Установить имя", callback_data="set_display_name")
     keyboard.adjust(1)
     await message.answer("Добро пожаловать в игру 'Секретный Санта'! Выберите действие:", reply_markup=keyboard.as_markup())
+
+@dp.callback_query(lambda c: c.data == "set_display_name")
+async def set_display_name(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Введите новое отображаемое имя:")
+    await state.set_state(SetNameState.entering_name)
+
+@dp.message(StateFilter(SetNameState.entering_name))
+async def handle_new_display_name(message: Message, state: FSMContext):
+    new_name = message.text.strip()
+
+    if not new_name or len(new_name) > 50:
+        await message.answer("Имя не должно быть пустым и должно содержать не более 50 символов.")
+        return
+
+    cursor.execute(
+        "UPDATE participants SET user_name = ? WHERE user_id = ?",
+        (new_name, message.from_user.id)
+    )
+    conn.commit()
+
+    keyboard = InlineKeyboardBuilder()
+    keyboard.button(text="Назад", callback_data="back_to_main")
+    keyboard.adjust(1)
+
+    await message.answer(f"Ваше отображаемое имя обновлено на: {new_name}.", reply_markup=keyboard.as_markup())
+    await state.clear()
 
 @dp.callback_query(lambda c: c.data == "my_rooms")
 async def my_rooms(callback: CallbackQuery):
@@ -313,8 +343,9 @@ async def back_to_main(callback: CallbackQuery):
     keyboard.button(text="Мои комнаты", callback_data="my_rooms")
     keyboard.button(text="Создать комнату", callback_data="create_room")
     keyboard.button(text="Присоединиться к комнате", callback_data="join_room")
+    keyboard.button(text="Установить имя", callback_data="set_display_name")
     keyboard.adjust(1)
-    await callback.message.edit_text("Добро пожаловать в игру 'Секретный Санта'! Выберите действие:", reply_markup=keyboard.as_markup())
+    await callback.message.edit_text("Добро пожаловать в игру 'Секретный Санта'!  Выберите действие:", reply_markup=keyboard.as_markup())
 
 @dp.callback_query(lambda c: c.data.startswith("leave_room"))
 async def leave_room(callback: CallbackQuery):
@@ -456,38 +487,78 @@ async def confirm_start_game(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data.startswith("view_assignment"))
 async def view_assignment(callback: CallbackQuery):
     room_id = callback.data.split(":")[1]
-    cursor.execute("SELECT receiver_id FROM assignments WHERE room_id = ? AND giver_id = ?", (room_id, callback.from_user.id))
+    cursor.execute(
+        "SELECT receiver_id FROM assignments WHERE room_id = ? AND giver_id = ?",
+        (room_id, callback.from_user.id)
+    )
     assignment = cursor.fetchone()
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text="Посмотреть желания подопечного", callback_data=f"view_wishlist:{room_id}")
     keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
     if assignment:
-        cursor.execute("SELECT user_name FROM participants WHERE room_id = ? AND user_id = ?", (room_id, assignment[0]))
+        cursor.execute(
+            "SELECT user_name FROM participants WHERE room_id = ? AND user_id = ?",
+            (room_id, assignment[0])
+        )
         receiver_name = cursor.fetchone()
         if receiver_name:
-            await callback.message.edit_text(f"Вы дарите подарок: {receiver_name[0]}.", reply_markup=keyboard.as_markup())
+            await callback.message.edit_text(
+                f"Вы дарите подарок: {receiver_name[0]}.",
+                reply_markup=keyboard.as_markup()
+            )
         else:
-            await callback.message.edit_text("Ошибка: Не удалось найти подопечного в комнате.", reply_markup=keyboard.as_markup())
+            await callback.message.edit_text(
+                "Ошибка: Не удалось найти подопечного в комнате.",
+                reply_markup=keyboard.as_markup()
+            )
     else:
-        await callback.message.edit_text("Дождитесь проведения розыгрыша!", reply_markup=keyboard.as_markup())
-
+        await callback.message.edit_text(
+            "Дождитесь проведения розыгрыша!",
+            reply_markup=keyboard.as_markup()
+        )
 
 @dp.callback_query(lambda c: c.data.startswith("view_wishlist"))
 async def view_wishlist(callback: CallbackQuery):
     room_id = callback.data.split(":")[1]
-    cursor.execute("SELECT receiver_id FROM assignments WHERE room_id = ? AND giver_id = ?", (room_id, callback.from_user.id))
+    cursor.execute(
+        "SELECT receiver_id FROM assignments WHERE room_id = ? AND giver_id = ?",
+        (room_id, callback.from_user.id)
+    )
     receiver_id = cursor.fetchone()
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text="Назад", callback_data=f"room_menu:{room_id}")
     keyboard.adjust(1)
     if receiver_id:
-        cursor.execute("SELECT wish FROM wishes WHERE user_id = ?", (receiver_id[0],))
+        cursor.execute(
+            "SELECT user_name FROM participants WHERE user_id = ?",
+            (receiver_id[0],)
+        )
+        receiver_name = cursor.fetchone()
+
+        cursor.execute(
+            "SELECT wish FROM wishes WHERE user_id = ?",
+            (receiver_id[0],)
+        )
         wishes = cursor.fetchall()
+
         wishlist_text = "\n".join([wish[0] for wish in wishes]) if wishes else "Список желаний пуст."
-        await callback.message.edit_text(f"Список желаний вашего подопечного:\n{wishlist_text}", reply_markup=keyboard.as_markup())
+
+        if receiver_name:
+            await callback.message.edit_text(
+                f"Список желаний вашего подопечного ({receiver_name[0]}):\n{wishlist_text}",
+                reply_markup=keyboard.as_markup()
+            )
+        else:
+            await callback.message.edit_text(
+                "Ошибка: Не удалось найти подопечного.",
+                reply_markup=keyboard.as_markup()
+            )
     else:
-        await callback.message.edit_text("Ошибка: Не удалось найти подопечного.", reply_markup=keyboard.as_markup())
+        await callback.message.edit_text(
+            "Ошибка: Не удалось найти подопечного.",
+            reply_markup=keyboard.as_markup()
+        )
 
 
 @dp.callback_query(lambda c: c.data.startswith("delete_room"))
